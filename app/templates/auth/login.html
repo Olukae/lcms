@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Log In{% endblock %}
+{% block body_class %}lcms-auth-body{% endblock %}
+
+{% block auth_content %}
+<div class="lcms-auth-screen">
+  <div class="lcms-auth-side">
+    <div class="lcms-auth-side-mark">LCMS</div>
+    <div class="lcms-auth-side-quote">
+      &ldquo;Every curriculum that crosses this system carries its full history with it — who proposed it, who reviewed it, and what changed.&rdquo;
+    </div>
+    <div class="lcms-auth-side-foot">Lagos State University &middot; Curriculum Management System</div>
+  </div>
+
+  <div class="lcms-auth-form-wrap">
+    <div class="lcms-auth-form">
+      <div class="lcms-auth-eyebrow">Faculty &amp; Registry Access</div>
+      <h1 class="lcms-auth-title">Welcome back</h1>
+      <p class="lcms-auth-sub">Sign in to review, submit, or track curriculum proposals.</p>
+
+      <div id="login-error" class="lcms-banner lcms-banner-danger" style="display:none;"></div>
+
+      <form id="login-form">
+        <div class="lcms-field">
+          <label class="lcms-label lcms-field-required" for="email">Email address</label>
+          <input class="lcms-input" type="email" id="email" name="email" required autocomplete="email" placeholder="you@lasu.edu.ng">
+        </div>
+        <div class="lcms-field">
+          <label class="lcms-label lcms-field-required" for="password">Password</label>
+          <input class="lcms-input" type="password" id="password" name="password" required autocomplete="current-password" placeholder="••••••••">
+        </div>
+        <button type="submit" class="lcms-btn lcms-btn-primary" style="width:100%;" id="login-submit">Log in</button>
+      </form>
+
+      <div style="margin-top:18px; text-align:center;">
+        <a href="/forgot-password" class="lcms-auth-link">Forgot your password?</a>
+      </div>
+
+      <div class="lcms-demo-creds">
+        Demo accounts (after running <code>python seed.py</code>): <code>lecturer@lasu.edu.ng</code>,
+        <code>hod@lasu.edu.ng</code>, <code>dean@lasu.edu.ng</code>, <code>qa@lasu.edu.ng</code>,
+        <code>admin@lasu.edu.ng</code> — password <code>Password123!</code> for all.
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errorBox = document.getElementById('login-error');
+  const submitBtn = document.getElementById('login-submit');
+  errorBox.style.display = 'none';
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Signing in…';
+
+  try {
+    const resp = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        email: document.getElementById('email').value,
+        password: document.getElementById('password').value,
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      errorBox.textContent = data.error || 'Login failed.';
+      errorBox.style.display = 'flex';
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Log in';
+      return;
+    }
+    window.location.href = data.redirect || '/';
+  } catch (err) {
+    errorBox.textContent = 'Could not reach the server. Please try again.';
+    errorBox.style.display = 'flex';
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Log in';
+  }
+});
+</script>
+{% endblock %}

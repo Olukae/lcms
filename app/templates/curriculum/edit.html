@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block title %}Edit Proposal{% endblock %}
+{% block page_title %}Revise Curriculum Proposal{% endblock %}
+
+{% block content %}
+<div style="max-width:760px;">
+  <div id="loading-state" class="lcms-empty">Loading proposal…</div>
+
+  <div id="return-comment-banner" class="lcms-banner lcms-banner-warn" style="display:none;"></div>
+
+  <div id="autosave-banner" class="lcms-autosave-indicator" style="margin-bottom:18px; justify-content:flex-end; display:none;">
+    <span class="lcms-autosave-dot"></span><span id="autosave-text">Not yet saved</span>
+  </div>
+
+  <div id="form-error" class="lcms-banner lcms-banner-danger" style="display:none;"></div>
+
+  <form id="curriculum-form" style="display:none;">
+    <div class="lcms-card lcms-card-pad" style="margin-bottom:20px;">
+      <h3 class="lcms-section-title">Course Identification</h3>
+      <div class="lcms-row-3">
+        <div class="lcms-field">
+          <label class="lcms-label lcms-field-required">Course code</label>
+          <input class="lcms-input" name="course_code" required>
+        </div>
+        <div class="lcms-field">
+          <label class="lcms-label lcms-field-required">Credit units</label>
+          <input class="lcms-input" type="number" name="credit_units" min="1" max="10" required>
+        </div>
+        <div class="lcms-field">
+          <label class="lcms-label">Level</label>
+          <input class="lcms-input" name="level">
+        </div>
+      </div>
+      <div class="lcms-field">
+        <label class="lcms-label lcms-field-required">Course title</label>
+        <input class="lcms-input" name="course_title" required>
+      </div>
+      <div class="lcms-field">
+        <label class="lcms-label lcms-field-required">Semester</label>
+        <select class="lcms-select" name="semester" required>
+          <option value="First">First</option>
+          <option value="Second">Second</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="lcms-card lcms-card-pad" style="margin-bottom:20px;">
+      <h3 class="lcms-section-title">Course Content</h3>
+      <div class="lcms-field">
+        <label class="lcms-label lcms-field-required">Course description</label>
+        <textarea class="lcms-textarea" name="course_description" required></textarea>
+      </div>
+      <div class="lcms-field">
+        <label class="lcms-label lcms-field-required">Learning outcomes</label>
+        <textarea class="lcms-textarea" name="learning_outcomes" required></textarea>
+      </div>
+      <div class="lcms-field">
+        <label class="lcms-label">Prerequisite courses</label>
+        <textarea class="lcms-textarea" name="prerequisites" style="min-height:70px;"></textarea>
+      </div>
+    </div>
+
+    <div class="lcms-card lcms-card-pad" style="margin-bottom:20px;">
+      <h3 class="lcms-section-title">Assessment &amp; Resources</h3>
+      <div class="lcms-row-2">
+        <div class="lcms-field">
+          <label class="lcms-label lcms-field-required">Continuous assessment (%)</label>
+          <input class="lcms-input" type="number" name="ca_score" min="0" max="100" required>
+        </div>
+        <div class="lcms-field">
+          <label class="lcms-label lcms-field-required">Examination (%)</label>
+          <input class="lcms-input" type="number" name="exam_score" min="0" max="100" required>
+        </div>
+      </div>
+      <div class="lcms-field">
+        <label class="lcms-label lcms-field-required">Recommended reading list</label>
+        <textarea class="lcms-textarea" name="reading_list" required></textarea>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:12px; justify-content:flex-end;">
+      <a href="javascript:history.back()" class="lcms-btn lcms-btn-outline">Cancel</a>
+      <button type="submit" class="lcms-btn lcms-btn-outline" id="save-btn">Save Changes</button>
+      <button type="button" class="lcms-btn lcms-btn-gold" id="submit-btn">Resubmit for Review</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const curriculumId = {{ curriculum_id }};
+const form = document.getElementById('curriculum-form');
+
+async function load() {
+  const resp = await lcmsFetch(`/api/curriculum/${curriculumId}`);
+  if (!resp.ok) {
+    document.getElementById('loading-state').textContent = 'This proposal could not be loaded, or you do not have permission to edit it.';
+    return;
+  }
+  const data = await resp.json();
+  const c = data.curriculum;
+
+  if (c.status !== 'draft' && c.status !== 'returned') {
+    document.getElementById('loading-state').textContent = 'This proposal is no longer editable — it is currently in ' + c.status_label + '.';
+    return;
+  }
+
+  if (c.last_return_comment) {
+    document.getElementById('return-comment-banner').style.display = 'flex';
+    document.getElementById('return-comment-banner').textContent = 'Reviewer comment: ' + c.last_return_comment;
+  }
+
+  if (c.course) {
+    form.course_code.value = c.course.course_code || '';
+    form.course_title.value = c.course.course_title || '';
+    form.credit_units.value = c.course.credit_units || '';
+    form.level.value = c.course.level || '';
+    form.semester.value = c.course.semester || 'First';
+  }
+  form.course_description.value = c.course_description || '';
+  form.learning_outcomes.value = c.learning_outcomes || '';
+  form.prerequisites.value = c.prerequisites || '';
+  form.reading_list.value = c.reading_list || '';
+  if (c.assessment_breakdown) {
+    form.ca_score.value = c.assessment_breakdown.CA ?? 30;
+    form.exam_score.value = c.assessment_breakdown.Exam ?? 70;
+  }
+
+  document.getElementById('loading-state').style.display = 'none';
+  document.getElementById('autosave-banner').style.display = 'flex';
+  form.style.display = 'block';
+}
+
+function getFormPayload() {
+  const fd = new FormData(form);
+  return {
+    course_code: fd.get('course_code'),
+    course_title: fd.get('course_title'),
+    credit_units: parseInt(fd.get('credit_units')) || null,
+    level: fd.get('level'),
+    semester: fd.get('semester'),
+    course_description: fd.get('course_description'),
+    learning_outcomes: fd.get('learning_outcomes'),
+    prerequisites: fd.get('prerequisites'),
+    reading_list: fd.get('reading_list'),
+    assessment_breakdown: {
+      CA: parseInt(fd.get('ca_score')) || 0,
+      Exam: parseInt(fd.get('exam_score')) || 0,
+    },
+  };
+}
+
+let autosaveTimer = null;
+form.addEventListener('input', () => {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(async () => {
+    document.getElementById('autosave-text').textContent = 'Saving…';
+    const resp = await lcmsFetch(`/api/curriculum/${curriculumId}/autosave`, {
+      method: 'PATCH', body: JSON.stringify({ draft_data: getFormPayload() }),
+    });
+    document.getElementById('autosave-text').textContent = resp.ok ? 'Saved' : 'Could not save';
+    document.getElementById('autosave-banner').classList.toggle('is-saved', resp.ok);
+  }, 30000);
+});
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errorBox = document.getElementById('form-error');
+  errorBox.style.display = 'none';
+  const resp = await lcmsFetch(`/api/curriculum/${curriculumId}`, { method: 'PUT', body: JSON.stringify(getFormPayload()) });
+  const data = await resp.json();
+  if (!resp.ok) {
+    errorBox.textContent = data.error || 'Could not save changes.';
+    errorBox.style.display = 'flex';
+    return;
+  }
+  document.getElementById('autosave-text').textContent = 'Saved';
+  document.getElementById('autosave-banner').classList.add('is-saved');
+});
+
+document.getElementById('submit-btn').addEventListener('click', async () => {
+  const errorBox = document.getElementById('form-error');
+  errorBox.style.display = 'none';
+  await lcmsFetch(`/api/curriculum/${curriculumId}`, { method: 'PUT', body: JSON.stringify(getFormPayload()) });
+  const resp = await lcmsFetch(`/api/curriculum/${curriculumId}/submit`, { method: 'POST' });
+  const data = await resp.json();
+  if (!resp.ok) {
+    errorBox.textContent = data.error || 'Could not resubmit.';
+    errorBox.style.display = 'flex';
+    return;
+  }
+  window.location.href = `/curriculum/${curriculumId}`;
+});
+
+load();
+</script>
+{% endblock %}

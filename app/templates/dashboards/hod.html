@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% from "dashboards/_review_queue.html" import review_queue %}
+{% block title %}HOD Dashboard{% endblock %}
+{% block page_title %}Departmental Review{% endblock %}
+
+{% block content %}
+{{ review_queue(pending, "Queue is clear", "No proposals are currently awaiting departmental review.") }}
+{% endblock %}

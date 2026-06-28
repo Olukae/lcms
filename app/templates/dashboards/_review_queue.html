@@ -1,0 +1,47 @@
+{% macro review_queue(pending, empty_title, empty_body) %}
+<div class="lcms-stat-row">
+  <div class="lcms-stat">
+    <div class="lcms-stat-label">Awaiting your review</div>
+    <div class="lcms-stat-value">{{ pending|length }}</div>
+  </div>
+</div>
+
+<h2 class="lcms-section-title">Pending review</h2>
+
+<div class="lcms-card">
+  {% if pending %}
+  <table class="lcms-table">
+    <thead>
+      <tr>
+        <th>Course</th>
+        <th>Submitted by</th>
+        <th>Version</th>
+        <th>In queue since</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in pending %}
+      <tr>
+        <td>
+          <div style="font-weight:600; color:var(--navy-900);">{{ c.course.course_code if c.course }}</div>
+          <div style="font-size:12px; color:var(--ink-400);">{{ c.course.course_title if c.course }}</div>
+        </td>
+        <td>{{ c.originating_user.full_name if c.originating_user }}</td>
+        <td class="lcms-mono">v{{ c.current_version_no }}</td>
+        <td>{{ c.updated_at.strftime('%d %b %Y') if c.updated_at }}</td>
+        <td style="text-align:right;">
+          <a href="/curriculum/{{ c.id }}" class="lcms-btn lcms-btn-primary lcms-btn-sm">Review</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="lcms-empty">
+    <div class="lcms-empty-title">{{ empty_title }}</div>
+    <p>{{ empty_body }}</p>
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}

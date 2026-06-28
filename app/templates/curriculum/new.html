@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+{% block title %}New Proposal{% endblock %}
+{% block page_title %}New Curriculum Proposal{% endblock %}
+
+{% block content %}
+<div style="max-width:760px;">
+  <div id="autosave-banner" class="lcms-autosave-indicator" style="margin-bottom:18px; justify-content:flex-end; display:flex;">
+    <span class="lcms-autosave-dot"></span><span id="autosave-text">Not yet saved</span>
+  </div>
+
+  <div id="form-error" class="lcms-banner lcms-banner-danger" style="display:none;"></div>
+
+  <form id="curriculum-form">
+    <div class="lcms-card lcms-card-pad" style="margin-bottom:20px;">
+      <h3 class="lcms-section-title">Course Identification</h3>
+      <div class="lcms-field">
+        <label class="lcms-label lcms-field-required">Programme</label>
+        <select class="lcms-select" name="programme_id" id="programme_id" required></select>
+        <div class="lcms-hint">Which degree programme does this course belong to?</div>
+      </div>
+      <div class="lcms-row-3">
+        <div class="lcms-field">
+          <label class="lcms-label lcms-field-required">Course code</label>
+          <input class="lcms-input" name="course_code" placeholder="e.g. CSC301" required>
+        </div>
+        <div class="lcms-field">
+          <label class="lcms-label lcms-field-required">Credit units</label>
+          <input class="lcms-input" type="number" name="credit_units" min="1" max="10" required>
+        </div>
+        <div class="lcms-field">
+          <label class="lcms-label">Level</label>
+          <input class="lcms-input" name="level" placeholder="e.g. 300">
+        </div>
+      </div>
+      <div class="lcms-field">
+        <label class="lcms-label lcms-field-required">Course title</label>
+        <input class="lcms-input" name="course_title" placeholder="e.g. Data Structures and Algorithms" required>
+        <div class="lcms-hint">The full official title as it will appear on transcripts.</div>
+      </div>
+      <div class="lcms-field">
+        <label class="lcms-label lcms-field-required">Semester</label>
+        <select class="lcms-select" name="semester" required>
+          <option value="First">First</option>
+          <option value="Second">Second</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="lcms-card lcms-card-pad" style="margin-bottom:20px;">
+      <h3 class="lcms-section-title">Course Content</h3>
+      <div class="lcms-field">
+        <label class="lcms-label lcms-field-required">Course description</label>
+        <textarea class="lcms-textarea" name="course_description" required></textarea>
+        <div class="lcms-hint">A concise summary of what the course covers, 2–4 sentences.</div>
+      </div>
+      <div class="lcms-field">
+        <label class="lcms-label lcms-field-required">Learning outcomes</label>
+        <textarea class="lcms-textarea" name="learning_outcomes" required></textarea>
+        <div class="lcms-hint">List what students will be able to do by the end of the course.</div>
+      </div>
+      <div class="lcms-field">
+        <label class="lcms-label">Prerequisite courses</label>
+        <textarea class="lcms-textarea" name="prerequisites" style="min-height:70px;"></textarea>
+        <div class="lcms-hint">Course codes students must complete first, if any.</div>
+      </div>
+    </div>
+
+    <div class="lcms-card lcms-card-pad" style="margin-bottom:20px;">
+      <h3 class="lcms-section-title">Assessment &amp; Resources</h3>
+      <div class="lcms-row-2">
+        <div class="lcms-field">
+          <label class="lcms-label lcms-field-required">Continuous assessment (%)</label>
+          <input class="lcms-input" type="number" name="ca_score" min="0" max="100" value="30" required>
+        </div>
+        <div class="lcms-field">
+          <label class="lcms-label lcms-field-required">Examination (%)</label>
+          <input class="lcms-input" type="number" name="exam_score" min="0" max="100" value="70" required>
+        </div>
+      </div>
+      <div class="lcms-hint" id="assessment-total-hint" style="margin-bottom:16px;">CA + Exam should total 100%.</div>
+      <div class="lcms-field">
+        <label class="lcms-label lcms-field-required">Recommended reading list</label>
+        <textarea class="lcms-textarea" name="reading_list" required></textarea>
+        <div class="lcms-hint">One reference per line is fine — author, title, year.</div>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:12px; justify-content:flex-end;">
+      <a href="/dashboard/lecturer" class="lcms-btn lcms-btn-outline">Cancel</a>
+      <button type="submit" class="lcms-btn lcms-btn-outline" id="save-draft-btn">Save Draft</button>
+      <button type="button" class="lcms-btn lcms-btn-gold" id="submit-btn" disabled>Submit for Review</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let currentCurriculumId = null;
+let autosaveTimer = null;
+
+async function loadProgrammes() {
+  const select = document.getElementById('programme_id');
+  if (!select) return;                          // ← guard
+  const resp = await lcmsFetch('/api/curriculum/programmes');
+  if (resp.ok) {
+    const data = await resp.json();
+    select.innerHTML = data.programmes.map(p =>
+      `<option value="${p.id}">${escapeHtml(p.name)}</option>`
+    ).join('');
+  } else {
+    select.innerHTML = '<option value="">No programmes available — contact your administrator</option>';
+  }
+}
+
+function setAutosaveStatus(text, saved) {
+  document.getElementById('autosave-text').textContent = text;
+  document.getElementById('autosave-banner').classList.toggle('is-saved', !!saved);
+}
+
+function checkFormValidity() {
+  const form = document.getElementById('curriculum-form');
+  const submitBtn = document.getElementById('submit-btn');
+  submitBtn.disabled = !form.checkValidity() || !currentCurriculumId;
+}
+
+function getFormPayload() {
+  const form = document.getElementById('curriculum-form');
+  const fd = new FormData(form);
+  return {
+    programme_id: parseInt(fd.get('programme_id')),
+    course_code: fd.get('course_code'),
+    course_title: fd.get('course_title'),
+    credit_units: parseInt(fd.get('credit_units')) || null,
+    level: fd.get('level'),
+    semester: fd.get('semester'),
+    course_description: fd.get('course_description'),
+    learning_outcomes: fd.get('learning_outcomes'),
+    prerequisites: fd.get('prerequisites'),
+    reading_list: fd.get('reading_list'),
+    assessment_breakdown: {
+      CA: parseInt(fd.get('ca_score')) || 0,
+      Exam: parseInt(fd.get('exam_score')) || 0,
+    },
+  };
+}
+
+function scheduleAutosave() {
+  if (!currentCurriculumId) return;
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(doAutosave, 30000);
+}
+
+async function doAutosave() {
+  if (!currentCurriculumId) return;
+  setAutosaveStatus('Saving…', false);
+  const payload = getFormPayload();
+  const resp = await lcmsFetch(`/api/curriculum/${currentCurriculumId}/autosave`, {
+    method: 'PATCH',
+    body: JSON.stringify({ draft_data: payload }),
+  });
+  if (resp.ok) {
+    setAutosaveStatus('Saved', true);
+  } else {
+    setAutosaveStatus('Could not save — will retry', false);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {          // ← wrap everything
+  loadProgrammes();
+
+  document.getElementById('curriculum-form').addEventListener('input', () => {
+    checkFormValidity();
+    scheduleAutosave();
+  });
+
+  document.getElementById('curriculum-form').addEventListener('blur', () => {
+    if (currentCurriculumId) doAutosave();
+  }, true);
+
+  document.getElementById('curriculum-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('form-error');
+    errorBox.style.display = 'none';
+    const payload = getFormPayload();
+
+    if (!currentCurriculumId) {
+      const resp = await lcmsFetch('/api/curriculum', { method: 'POST', body: JSON.stringify(payload) });
+      const data = await resp.json();
+      if (!resp.ok) {
+        errorBox.textContent = data.error || 'Could not save draft.';
+        errorBox.style.display = 'flex';
+        return;
+      }
+      currentCurriculumId = data.curriculum.id;
+      setAutosaveStatus('Saved', true);
+      checkFormValidity();
+    } else {
+      const resp = await lcmsFetch(`/api/curriculum/${currentCurriculumId}`, { method: 'PUT', body: JSON.stringify(payload) });
+      const data = await resp.json();
+      if (!resp.ok) {
+        errorBox.textContent = data.error || 'Could not save draft.';
+        errorBox.style.display = 'flex';
+        return;
+      }
+      setAutosaveStatus('Saved', true);
+      checkFormValidity();
+    }
+  });
+
+  document.getElementById('submit-btn').addEventListener('click', async () => {
+    if (!currentCurriculumId) return;
+    const errorBox = document.getElementById('form-error');
+    errorBox.style.display = 'none';
+
+    const payload = getFormPayload();
+    await lcmsFetch(`/api/curriculum/${currentCurriculumId}`, { method: 'PUT', body: JSON.stringify(payload) });
+
+    const resp = await lcmsFetch(`/api/curriculum/${currentCurriculumId}/submit`, { method: 'POST' });
+    const data = await resp.json();
+    if (!resp.ok) {
+      errorBox.textContent = data.error || 'Could not submit.';
+      errorBox.style.display = 'flex';
+      return;
+    }
+    window.location.href = `/curriculum/${currentCurriculumId}`;
+  });
+});
+</script>
+{% endblock %}

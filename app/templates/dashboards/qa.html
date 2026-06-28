@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% from "dashboards/_review_queue.html" import review_queue %}
+{% block title %}QA Dashboard{% endblock %}
+{% block page_title %}Quality Assurance Review{% endblock %}
+
+{% block content %}
+{{ review_queue(pending, "Queue is clear", "No proposals are currently awaiting NUC compliance review.") }}
+
+<div style="margin-top:32px;">
+  <a href="/reports" class="lcms-btn lcms-btn-outline">Generate Accreditation Report</a>
+</div>
+{% endblock %}

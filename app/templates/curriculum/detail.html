@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Proposal Detail{% endblock %}
+{% block page_title %}Curriculum Proposal{% endblock %}
+
+{% block content %}
+<div id="loading-state" class="lcms-empty">Loading proposal…</div>
+
+<div id="detail-root" style="display:none; max-width:880px;">
+  <div id="return-banner" class="lcms-banner lcms-banner-warn" style="display:none;"></div>
+
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
+    <div>
+      <div style="font-size:12px; color:var(--ink-400); margin-bottom:4px;" id="course-code-label"></div>
+      <h2 class="lcms-serif" id="course-title-label" style="margin:0;"></h2>
+    </div>
+    <div style="text-align:right;">
+      <span id="status-pill"></span>
+      <div style="font-size:12px; color:var(--ink-400); margin-top:8px;" class="lcms-mono" id="version-label"></div>
+    </div>
+  </div>
+
+  <div class="lcms-card lcms-card-pad" style="margin-bottom:20px;">
+    <h3 class="lcms-section-title">Course Description</h3>
+    <p id="field-description" style="white-space:pre-wrap;"></p>
+
+    <h3 class="lcms-section-title">Learning Outcomes</h3>
+    <p id="field-outcomes" style="white-space:pre-wrap;"></p>
+
+    <h3 class="lcms-section-title">Prerequisites</h3>
+    <p id="field-prereqs" style="white-space:pre-wrap;"></p>
+
+    <h3 class="lcms-section-title">Assessment Breakdown</h3>
+    <p id="field-assessment"></p>
+
+    <h3 class="lcms-section-title">Recommended Reading List</h3>
+    <p id="field-reading" style="white-space:pre-wrap;"></p>
+  </div>
+
+  <div class="lcms-card lcms-card-pad" id="action-card" style="display:none; margin-bottom:20px;">
+    <h3 class="lcms-section-title" id="action-title">Record your decision</h3>
+    <div id="decision-error" class="lcms-banner lcms-banner-danger" style="display:none;"></div>
+    <div class="lcms-field">
+      <label class="lcms-label">Comments <span style="font-weight:400; color:var(--ink-400);">(required if returning)</span></label>
+      <textarea class="lcms-textarea" id="decision-comments" style="min-height:90px;"></textarea>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <button class="lcms-btn lcms-btn-gold" id="approve-btn">Approve &amp; Forward</button>
+      <button class="lcms-btn lcms-btn-danger-outline" id="return-btn">Return for Revision</button>
+    </div>
+  </div>
+
+  <div class="lcms-card lcms-card-pad" id="lecturer-action-card" style="display:none; margin-bottom:20px;">
+    <p style="margin-bottom:14px; color:var(--ink-600); font-size:13.5px;">
+      This proposal was returned for revision. Edit it and resubmit when ready.
+    </p>
+    <a href="#" class="lcms-btn lcms-btn-primary" id="edit-link">Edit &amp; Resubmit</a>
+  </div>
+
+  <div style="margin-bottom:20px;">
+    <a href="#" id="export-pdf-link" class="lcms-btn lcms-btn-outline lcms-btn-sm" target="_blank">Export as PDF</a>
+  </div>
+
+  <h3 class="lcms-section-title">Version History</h3>
+  <div id="version-history"></div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const curriculumId = {{ curriculum_id }};
+let currentUserRole = null;
+let curriculumData = null;
+
+const STAGE_BY_STATUS = {
+  dept_review: 'hod', faculty_review: 'dean', qa_review: 'qa_officer', senate_review: 'admin',
+};
+const STATUS_PILL_CLASS = {
+  draft: 'lcms-pill-draft', approved: 'lcms-pill-approved', returned: 'lcms-pill-returned',
+};
+
+async function init() {
+  const meResp = await lcmsFetch('/api/auth/me');
+  if (meResp.ok) {
+    const me = await meResp.json();
+    currentUserRole = me.user.role;
+  }
+
+  const resp = await lcmsFetch(`/api/curriculum/${curriculumId}`);
+  if (!resp.ok) {
+    document.getElementById('loading-state').textContent = 'This proposal could not be loaded, or you do not have permission to view it.';
+    return;
+  }
+  const data = await resp.json();
+  curriculumData = data.curriculum;
+  render();
+  await loadHistory();
+
+  document.getElementById('loading-state').style.display = 'none';
+  document.getElementById('detail-root').style.display = 'block';
+}
+
+function render() {
+  const c = curriculumData;
+  document.getElementById('course-code-label').textContent = c.course ? c.course.course_code + ' · ' + c.course.credit_units + ' units · Level ' + (c.course.level || '—') : '';
+  document.getElementById('course-title-label').textContent = c.course ? c.course.course_title : 'Untitled';
+
+  const pillClass = STATUS_PILL_CLASS[c.status] || 'lcms-pill-progress';
+  document.getElementById('status-pill').innerHTML = `<span class="lcms-pill ${pillClass}">${escapeHtml(c.status_label)}</span>`;
+  document.getElementById('version-label').textContent = `Version ${c.current_version_no}`;
+
+  document.getElementById('field-description').textContent = c.course_description || '—';
+  document.getElementById('field-outcomes').textContent = c.learning_outcomes || '—';
+  document.getElementById('field-prereqs').textContent = c.prerequisites || 'None specified';
+  document.getElementById('field-assessment').textContent = c.assessment_breakdown
+    ? Object.entries(c.assessment_breakdown).map(([k, v]) => `${k}: ${v}%`).join(' · ')
+    : '—';
+  document.getElementById('field-reading').textContent = c.reading_list || '—';
+
+  document.getElementById('export-pdf-link').href = `/api/curriculum/${curriculumId}/export.pdf`;
+
+  if (c.status === 'returned' && c.last_return_comment) {
+    document.getElementById('return-banner').style.display = 'flex';
+    document.getElementById('return-banner').textContent = 'Returned with comment: ' + c.last_return_comment;
+  }
+
+  const requiredRole = STAGE_BY_STATUS[c.status];
+  if (requiredRole && currentUserRole === requiredRole) {
+    document.getElementById('action-card').style.display = 'block';
+    const stageLabels = { hod: 'Departmental Review', dean: 'Faculty Board', qa_officer: 'Quality Assurance', admin: 'Senate Ratification' };
+    document.getElementById('action-title').textContent = `Record your decision — ${stageLabels[requiredRole]}`;
+  }
+
+  if (c.status === 'returned' && currentUserRole === 'lecturer') {
+    document.getElementById('lecturer-action-card').style.display = 'block';
+    document.getElementById('edit-link').href = `/curriculum/${curriculumId}/edit`;
+  }
+}
+
+async function loadHistory() {
+  const resp = await lcmsFetch(`/api/curriculum/${curriculumId}/history`);
+  if (!resp.ok) return;
+  const data = await resp.json();
+  const wrap = document.getElementById('version-history');
+  if (data.versions.length === 0) {
+    wrap.innerHTML = '<div class="lcms-empty">No version history yet.</div>';
+    return;
+  }
+  wrap.innerHTML = data.versions.slice().reverse().map(v => `
+    <div class="lcms-version-item">
+      <div class="lcms-version-no">VERSION ${v.version_no}</div>
+      <div class="lcms-version-summary">${escapeHtml(v.change_summary || '')}</div>
+      <div class="lcms-version-meta">${escapeHtml(v.changed_by || 'Unknown')} · ${new Date(v.created_at).toLocaleString()}</div>
+    </div>
+  `).join('');
+}
+
+async function recordDecision(decision) {
+  const errorBox = document.getElementById('decision-error');
+  errorBox.style.display = 'none';
+  const comments = document.getElementById('decision-comments').value.trim();
+
+  if (decision === 'returned' && !comments) {
+    errorBox.textContent = 'Please add a comment explaining what needs revision.';
+    errorBox.style.display = 'flex';
+    return;
+  }
+
+  const resp = await lcmsFetch(`/api/curriculum/${curriculumId}/decision`, {
+    method: 'POST',
+    body: JSON.stringify({ decision, comments: comments || null }),
+  });
+  const data = await resp.json();
+  if (!resp.ok) {
+    errorBox.textContent = data.error || 'Could not record decision.';
+    errorBox.style.display = 'flex';
+    return;
+  }
+  window.location.reload();
+}
+
+document.getElementById('approve-btn').addEventListener('click', () => recordDecision('approved'));
+document.getElementById('return-btn').addEventListener('click', () => recordDecision('returned'));
+
+init();
+</script>
+{% endblock %}

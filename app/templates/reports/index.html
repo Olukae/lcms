@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block page_title %}Accreditation Reports{% endblock %}
+
+{% block content %}
+<div class="lcms-card lcms-card-pad" style="margin-bottom:24px;">
+  <h3 class="lcms-section-title">Date range</h3>
+  <div style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap;">
+    <div class="lcms-field" style="margin-bottom:0; flex:1; min-width:160px;">
+      <label class="lcms-label">From</label>
+      <input class="lcms-input" type="date" id="start-date">
+    </div>
+    <div class="lcms-field" style="margin-bottom:0; flex:1; min-width:160px;">
+      <label class="lcms-label">To</label>
+      <input class="lcms-input" type="date" id="end-date">
+    </div>
+    <button class="lcms-btn lcms-btn-primary" id="run-report-btn">Run Report</button>
+    <a href="#" class="lcms-btn lcms-btn-gold" id="export-pdf-btn" target="_blank">Export PDF</a>
+  </div>
+</div>
+
+<div id="report-results" style="display:none;">
+  <div class="lcms-stat-row">
+    <div class="lcms-stat">
+      <div class="lcms-stat-label">Total proposals</div>
+      <div class="lcms-stat-value" id="stat-total">—</div>
+    </div>
+    <div class="lcms-stat">
+      <div class="lcms-stat-label">Approved</div>
+      <div class="lcms-stat-value" id="stat-approved">—</div>
+    </div>
+    <div class="lcms-stat">
+      <div class="lcms-stat-label">Returned</div>
+      <div class="lcms-stat-value" id="stat-returned">—</div>
+    </div>
+  </div>
+
+  <h3 class="lcms-section-title">Pending by stage</h3>
+  <div class="lcms-card lcms-card-pad" style="margin-bottom:24px;">
+    <div id="stage-breakdown" style="display:flex; gap:24px; flex-wrap:wrap;"></div>
+  </div>
+
+  <h3 class="lcms-section-title">Curricula in range</h3>
+  <div class="lcms-card">
+    <div id="report-table-wrap"></div>
+  </div>
+</div>
+
+<div id="report-empty" class="lcms-empty">
+  <div class="lcms-empty-title">Select a date range and run the report</div>
+  <p>Leave both fields blank to include all records.</p>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function buildQuery() {
+  const start = document.getElementById('start-date').value;
+  const end = document.getElementById('end-date').value;
+  const params = new URLSearchParams();
+  if (start) params.set('start_date', start);
+  if (end) params.set('end_date', end);
+  return params.toString();
+}
+
+document.getElementById('export-pdf-btn').addEventListener('click', (e) => {
+  e.preventDefault();
+  window.open('/api/reports/aggregate/export.pdf?' + buildQuery(), '_blank');
+});
+
+document.getElementById('run-report-btn').addEventListener('click', async () => {
+  const resp = await lcmsFetch('/api/reports/aggregate?' + buildQuery());
+  if (!resp.ok) return;
+  const data = await resp.json();
+  const r = data.report;
+
+  document.getElementById('report-empty').style.display = 'none';
+  document.getElementById('report-results').style.display = 'block';
+
+  document.getElementById('stat-total').textContent = r.total_curricula;
+  document.getElementById('stat-approved').textContent = r.approved_count;
+  document.getElementById('stat-returned').textContent = r.returned_count;
+
+  const stageEntries = Object.entries(r.pending_by_stage);
+  document.getElementById('stage-breakdown').innerHTML = stageEntries.length
+    ? stageEntries.map(([stage, count]) => `
+        <div>
+          <div style="font-size:11px; text-transform:uppercase; color:var(--ink-400); letter-spacing:0.04em;">${escapeHtml(stage.replace('_', ' '))}</div>
+          <div style="font-family:'Source Serif 4',serif; font-size:22px; color:var(--navy-950);">${count}</div>
+        </div>
+      `).join('')
+    : '<span style="color:var(--ink-400); font-size:13px;">Nothing currently pending.</span>';
+
+  const wrap = document.getElementById('report-table-wrap');
+  wrap.innerHTML = r.curricula.length ? `
+    <table class="lcms-table">
+      <thead><tr><th>Course</th><th>Status</th><th>Version</th><th>Created</th></tr></thead>
+      <tbody>
+        ${r.curricula.map(c => `
+          <tr>
+            <td><strong>${escapeHtml(c.course_code || '—')}</strong> — ${escapeHtml(c.course_title || '')}</td>
+            <td>${escapeHtml(c.status)}</td>
+            <td class="lcms-mono">v${c.current_version_no}</td>
+            <td>${new Date(c.created_at).toLocaleDateString()}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  ` : '<div class="lcms-empty">No records in this range.</div>';
+});
+</script>
+{% endblock %}

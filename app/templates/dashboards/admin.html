@@ -1,0 +1,355 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block page_title %}System Administration{% endblock %}
+
+{% block content %}
+<div class="lcms-stat-row">
+  <div class="lcms-stat">
+    <div class="lcms-stat-label">Awaiting Senate ratification</div>
+    <div class="lcms-stat-value">{{ senate_pending|length }}</div>
+  </div>
+  <div class="lcms-stat">
+    <div class="lcms-stat-label">Total users</div>
+    <div class="lcms-stat-value">{{ user_count }}</div>
+  </div>
+  <div class="lcms-stat">
+    <div class="lcms-stat-label">Faculties</div>
+    <div class="lcms-stat-value">{{ faculty_count }}</div>
+  </div>
+</div>
+
+<div style="display:flex; gap:4px; margin-bottom:24px; border-bottom:1px solid var(--line);">
+  <button class="lcms-tab-btn is-active" data-tab="senate">Senate Ratification</button>
+  <button class="lcms-tab-btn" data-tab="users">User Management</button>
+  <button class="lcms-tab-btn" data-tab="org">Faculties &amp; Departments</button>
+  <button class="lcms-tab-btn" data-tab="audit">Audit Log</button>
+</div>
+
+<style>
+  .lcms-tab-btn {
+    background: none; border: none; border-bottom: 2px solid transparent;
+    padding: 10px 16px; font-size: 13px; font-weight: 600; color: var(--ink-400);
+    cursor: pointer; margin-bottom: -1px;
+  }
+  .lcms-tab-btn.is-active { color: var(--navy-900); border-bottom-color: var(--gold-500); }
+  .lcms-tab-panel { display: none; }
+  .lcms-tab-panel.is-active { display: block; }
+</style>
+
+<!-- Senate Ratification -->
+<div class="lcms-tab-panel is-active" id="tab-senate">
+  <div class="lcms-card">
+    {% if senate_pending %}
+    <table class="lcms-table">
+      <thead><tr><th>Course</th><th>Originator</th><th>Version</th><th>Cleared since</th><th></th></tr></thead>
+      <tbody>
+        {% for c in senate_pending %}
+        <tr>
+          <td>
+            <div style="font-weight:600;">{{ c.course.course_code if c.course }}</div>
+            <div style="font-size:12px; color:var(--ink-400);">{{ c.course.course_title if c.course }}</div>
+          </td>
+          <td>{{ c.originating_user.full_name if c.originating_user }}</td>
+          <td class="lcms-mono">v{{ c.current_version_no }}</td>
+          <td>{{ c.updated_at.strftime('%d %b %Y') if c.updated_at }}</td>
+          <td style="text-align:right;"><a href="/curriculum/{{ c.id }}" class="lcms-btn lcms-btn-primary lcms-btn-sm">Review</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="lcms-empty">
+      <div class="lcms-empty-title">Nothing awaiting Senate</div>
+      <p>No proposals have cleared QA and are awaiting the Senate ratification record.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- User Management -->
+<div class="lcms-tab-panel" id="tab-users">
+  <div style="display:flex; justify-content:flex-end; margin-bottom:14px;">
+    <button class="lcms-btn lcms-btn-gold" id="open-create-user">+ New User</button>
+  </div>
+  <div class="lcms-card">
+    <div id="users-table-wrap"><div class="lcms-empty">Loading…</div></div>
+  </div>
+</div>
+
+<!-- Faculties & Departments -->
+<div class="lcms-tab-panel" id="tab-org">
+  <div class="lcms-row-2">
+    <div>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3 class="lcms-section-title" style="flex:1;">Faculties</h3>
+      </div>
+      <div class="lcms-card lcms-card-pad" style="margin-bottom:16px;">
+        <form id="faculty-form" style="display:flex; gap:8px;">
+          <input class="lcms-input" name="name" placeholder="Faculty name" required>
+          <input class="lcms-input" name="code" placeholder="Code" style="max-width:100px;" required>
+          <button type="submit" class="lcms-btn lcms-btn-outline lcms-btn-sm">Add</button>
+        </form>
+      </div>
+      <div class="lcms-card" id="faculties-list"><div class="lcms-empty">Loading…</div></div>
+    </div>
+    <div>
+      <h3 class="lcms-section-title">Departments</h3>
+      <div class="lcms-card lcms-card-pad" style="margin-bottom:16px;">
+        <form id="department-form" style="display:flex; flex-direction:column; gap:8px;">
+          <select class="lcms-select" name="faculty_id" id="dept-faculty-select" required>
+            <option value="">Select faculty…</option>
+          </select>
+          <div style="display:flex; gap:8px;">
+            <input class="lcms-input" name="name" placeholder="Department name" required>
+            <input class="lcms-input" name="code" placeholder="Code" style="max-width:100px;" required>
+            <button type="submit" class="lcms-btn lcms-btn-outline lcms-btn-sm">Add</button>
+          </div>
+        </form>
+      </div>
+      <div class="lcms-card" id="departments-list"><div class="lcms-empty">Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Audit Log -->
+<div class="lcms-tab-panel" id="tab-audit">
+  <div class="lcms-card">
+    <div id="audit-table-wrap"><div class="lcms-empty">Loading…</div></div>
+  </div>
+</div>
+
+<!-- Create user modal -->
+<div class="lcms-modal-backdrop" id="create-user-modal">
+  <div class="lcms-modal">
+    <h3 class="lcms-serif" style="margin-bottom:18px;">Create user</h3>
+    <div id="create-user-error" class="lcms-banner lcms-banner-danger" style="display:none;"></div>
+    <form id="create-user-form">
+      <div class="lcms-field">
+        <label class="lcms-label lcms-field-required">Full name</label>
+        <input class="lcms-input" name="full_name" required>
+      </div>
+      <div class="lcms-field">
+        <label class="lcms-label lcms-field-required">Email</label>
+        <input class="lcms-input" type="email" name="email" required>
+      </div>
+      <div class="lcms-field">
+        <label class="lcms-label lcms-field-required">Temporary password</label>
+        <input class="lcms-input" type="text" name="password" required minlength="8">
+      </div>
+      <div class="lcms-field">
+        <label class="lcms-label lcms-field-required">Role</label>
+        <select class="lcms-select" name="role" id="create-user-role" required>
+          <option value="lecturer">Lecturer</option>
+          <option value="hod">Head of Department</option>
+          <option value="dean">Dean / Faculty Officer</option>
+          <option value="qa_officer">Quality Assurance Officer</option>
+          <option value="admin">System Administrator</option>
+        </select>
+      </div>
+      <div class="lcms-field" id="create-user-faculty-field" style="display:none;">
+        <label class="lcms-label">Faculty</label>
+        <select class="lcms-select" name="faculty_id" id="create-user-faculty"></select>
+      </div>
+      <div class="lcms-field" id="create-user-dept-field" style="display:none;">
+        <label class="lcms-label lcms-field-required">Department</label>
+        <select class="lcms-select" name="department_id" id="create-user-dept"></select>
+      </div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
+        <button type="button" class="lcms-btn lcms-btn-outline" id="cancel-create-user">Cancel</button>
+        <button type="submit" class="lcms-btn lcms-btn-primary">Create user</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// ---- Tabs ----
+document.querySelectorAll('.lcms-tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.lcms-tab-btn').forEach(b => b.classList.remove('is-active'));
+    document.querySelectorAll('.lcms-tab-panel').forEach(p => p.classList.remove('is-active'));
+    btn.classList.add('is-active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('is-active');
+    if (btn.dataset.tab === 'users') loadUsers();
+    if (btn.dataset.tab === 'org') loadOrg();
+    if (btn.dataset.tab === 'audit') loadAuditLog();
+  });
+});
+
+const ROLE_LABELS = {
+  lecturer: 'Lecturer', hod: 'Head of Department', dean: 'Dean / Faculty Officer',
+  qa_officer: 'Quality Assurance Officer', admin: 'System Administrator',
+};
+
+// ---- Users ----
+async function loadUsers() {
+  const resp = await lcmsFetch('/dashboard/admin/users');
+  const data = await resp.json();
+  const wrap = document.getElementById('users-table-wrap');
+  if (data.users.length === 0) {
+    wrap.innerHTML = '<div class="lcms-empty">No users yet.</div>';
+    return;
+  }
+  wrap.innerHTML = `
+    <table class="lcms-table">
+      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        ${data.users.map(u => `
+          <tr>
+            <td>${escapeHtml(u.full_name)}</td>
+            <td>${escapeHtml(u.email)}</td>
+            <td>${ROLE_LABELS[u.role] || u.role}</td>
+            <td>${u.is_active ? '<span class="lcms-pill lcms-pill-approved">Active</span>' : '<span class="lcms-pill lcms-pill-returned">Inactive</span>'}</td>
+            <td style="text-align:right;">
+              ${u.is_active ? `<button class="lcms-btn lcms-btn-danger-outline lcms-btn-sm" onclick="deactivateUser(${u.id})">Deactivate</button>` : ''}
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+async function deactivateUser(userId) {
+  if (!confirm('Deactivate this user? They will no longer be able to log in.')) return;
+  await lcmsFetch(`/dashboard/admin/users/${userId}/deactivate`, { method: 'POST' });
+  loadUsers();
+}
+
+document.getElementById('open-create-user').addEventListener('click', async () => {
+  await populateOrgSelects();
+  document.getElementById('create-user-modal').classList.add('is-open');
+});
+document.getElementById('cancel-create-user').addEventListener('click', () => {
+  document.getElementById('create-user-modal').classList.remove('is-open');
+});
+
+document.getElementById('create-user-role').addEventListener('change', (e) => {
+  const role = e.target.value;
+  document.getElementById('create-user-dept-field').style.display =
+    (role === 'lecturer' || role === 'hod') ? 'block' : 'none';
+  document.getElementById('create-user-faculty-field').style.display =
+    (role === 'dean' || role === 'hod') ? 'block' : 'none';
+});
+
+let _orgCache = null;
+async function populateOrgSelects() {
+  if (!_orgCache) {
+    const [facResp, deptResp] = await Promise.all([
+      lcmsFetch('/dashboard/admin/faculties'), lcmsFetch('/dashboard/admin/departments')
+    ]);
+    _orgCache = { faculties: (await facResp.json()).faculties, departments: (await deptResp.json()).departments };
+  }
+  const facSelect = document.getElementById('create-user-faculty');
+  const deptSelect = document.getElementById('create-user-dept');
+  facSelect.innerHTML = _orgCache.faculties.map(f => `<option value="${f.id}">${escapeHtml(f.name)}</option>`).join('');
+  deptSelect.innerHTML = _orgCache.departments.map(d => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join('');
+}
+
+document.getElementById('create-user-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errorBox = document.getElementById('create-user-error');
+  errorBox.style.display = 'none';
+  const form = e.target;
+  const payload = {
+    full_name: form.full_name.value,
+    email: form.email.value,
+    password: form.password.value,
+    role: form.role.value,
+  };
+  if (form.faculty_id.value) payload.faculty_id = parseInt(form.faculty_id.value);
+  if (form.department_id.value) payload.department_id = parseInt(form.department_id.value);
+
+  const resp = await lcmsFetch('/dashboard/admin/users', { method: 'POST', body: JSON.stringify(payload) });
+  const data = await resp.json();
+  if (!resp.ok) {
+    errorBox.textContent = data.error || 'Could not create user.';
+    errorBox.style.display = 'flex';
+    return;
+  }
+  document.getElementById('create-user-modal').classList.remove('is-open');
+  form.reset();
+  loadUsers();
+});
+
+// ---- Org structure ----
+async function loadOrg() {
+  const [facResp, deptResp] = await Promise.all([
+    lcmsFetch('/dashboard/admin/faculties'), lcmsFetch('/dashboard/admin/departments')
+  ]);
+  const faculties = (await facResp.json()).faculties;
+  const departments = (await deptResp.json()).departments;
+  _orgCache = { faculties, departments };
+
+  document.getElementById('faculties-list').innerHTML = faculties.length
+    ? faculties.map(f => `<div style="padding:12px 16px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between;"><span>${escapeHtml(f.name)}</span><span class="lcms-mono" style="color:var(--ink-400);">${escapeHtml(f.code)}</span></div>`).join('')
+    : '<div class="lcms-empty">No faculties yet.</div>';
+
+  document.getElementById('departments-list').innerHTML = departments.length
+    ? departments.map(d => `<div style="padding:12px 16px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between;"><span>${escapeHtml(d.name)}</span><span class="lcms-mono" style="color:var(--ink-400);">${escapeHtml(d.code)}</span></div>`).join('')
+    : '<div class="lcms-empty">No departments yet.</div>';
+
+  const select = document.getElementById('dept-faculty-select');
+  select.innerHTML = '<option value="">Select faculty…</option>' +
+    faculties.map(f => `<option value="${f.id}">${escapeHtml(f.name)}</option>`).join('');
+}
+
+document.getElementById('faculty-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  await lcmsFetch('/dashboard/admin/faculties', {
+    method: 'POST',
+    body: JSON.stringify({ name: form.name.value, code: form.code.value }),
+  });
+  form.reset();
+  loadOrg();
+});
+
+document.getElementById('department-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  await lcmsFetch('/dashboard/admin/departments', {
+    method: 'POST',
+    body: JSON.stringify({
+      faculty_id: parseInt(form.faculty_id.value),
+      name: form.name.value,
+      code: form.code.value,
+    }),
+  });
+  form.reset();
+  loadOrg();
+});
+
+// ---- Audit log ----
+async function loadAuditLog() {
+  const resp = await lcmsFetch('/dashboard/admin/audit-log?per_page=50');
+  const data = await resp.json();
+  const wrap = document.getElementById('audit-table-wrap');
+  if (data.entries.length === 0) {
+    wrap.innerHTML = '<div class="lcms-empty">No audit entries yet.</div>';
+    return;
+  }
+  wrap.innerHTML = `
+    <table class="lcms-table">
+      <thead><tr><th>When</th><th>User</th><th>Action</th><th>Entity</th><th>Description</th></tr></thead>
+      <tbody>
+        ${data.entries.map(e => `
+          <tr>
+            <td class="lcms-mono" style="font-size:12px;">${new Date(e.created_at).toLocaleString()}</td>
+            <td>${escapeHtml(e.user)}</td>
+            <td><code style="font-size:12px;">${escapeHtml(e.action_type)}</code></td>
+            <td>${escapeHtml(e.entity_type)}${e.entity_id ? ' #' + e.entity_id : ''}</td>
+            <td style="font-size:12.5px; color:var(--ink-600);">${escapeHtml(e.description || '')}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+// Initial load
+loadUsers();
+</script>
+{% endblock %}
